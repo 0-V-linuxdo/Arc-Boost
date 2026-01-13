@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Arc 插件页筛选（原生样式）
 // @namespace    https://github.com/0-V-linuxdo/Arc-Boost
-// @version      [20260113] v1.0.0
 // @description  Add native-like filter (All/Enabled/Disabled) to Arc extensions page.
+// @version      [20260113] v1.0.0
+// @update-log   新增搜索框：按扩展名过滤，并记住搜索词。
 // @match        arc://extensions/*
 // @run-at       document-end
 // @grant        none
@@ -18,15 +19,18 @@
   ];
 
   const STORAGE_KEY = 'arc-boost-extension-filter';
+  const SEARCH_KEY = 'arc-boost-extension-search';
   const HIDDEN_ATTR = 'data-arc-filter-hidden';
   const STYLE_ID = 'arc-boost-filter-style';
   const BAR_ID = 'arc-boost-filter-bar';
 
   const state = {
     filter: 'all',
+    query: '',
     shadowRoot: null,
     buttons: new Map(),
     countEl: null,
+    searchEl: null,
     rafId: 0,
   };
 
@@ -45,6 +49,27 @@
   function saveFilter(value) {
     try {
       localStorage.setItem(STORAGE_KEY, value);
+    } catch (err) {
+      // Ignore storage errors on restricted pages.
+    }
+  }
+
+  function loadSearch() {
+    try {
+      return localStorage.getItem(SEARCH_KEY) || '';
+    } catch (err) {
+      // Ignore storage errors on restricted pages.
+    }
+    return '';
+  }
+
+  function saveSearch(value) {
+    try {
+      if (value) {
+        localStorage.setItem(SEARCH_KEY, value);
+      } else {
+        localStorage.removeItem(SEARCH_KEY);
+      }
     } catch (err) {
       // Ignore storage errors on restricted pages.
     }
@@ -100,6 +125,13 @@
     return null;
   }
 
+  function getItemName(item) {
+    const root = item.shadowRoot;
+    if (!root) return '';
+    const name = root.querySelector('#name');
+    return name ? name.textContent.trim() : '';
+  }
+
   function updateButtons() {
     for (const [id, button] of state.buttons.entries()) {
       const active = id === state.filter;
@@ -117,6 +149,7 @@
     if (!state.shadowRoot) return;
 
     const items = Array.from(state.shadowRoot.querySelectorAll('extensions-item'));
+    const query = state.query.trim().toLowerCase();
     let total = 0;
     let shown = 0;
     let enabled = 0;
@@ -129,11 +162,19 @@
       if (status === 'enabled') enabled += 1;
       if (status === 'disabled') disabled += 1;
 
-      let visible = true;
-      if (state.filter === 'enabled') visible = status === 'enabled';
-      if (state.filter === 'disabled') visible = status === 'disabled';
+      let matchesStatus = true;
+      if (status !== null) {
+        if (state.filter === 'enabled') matchesStatus = status === 'enabled';
+        if (state.filter === 'disabled') matchesStatus = status === 'disabled';
+      }
 
-      if (visible || status === null) {
+      let matchesQuery = true;
+      if (query) {
+        const name = getItemName(item).toLowerCase();
+        matchesQuery = name.includes(query);
+      }
+
+      if (matchesStatus && matchesQuery) {
         item.removeAttribute(HIDDEN_ATTR);
         shown += 1;
       } else {
@@ -236,11 +277,36 @@
 }
 
 #${BAR_ID} .arc-boost-count {
-  margin-left: auto;
+  margin-left: 8px;
   font-size: 13px;
   line-height: 20px;
   color: var(--cr-secondary-text-color, #5f6368);
   white-space: nowrap;
+}
+
+#${BAR_ID} .arc-boost-search {
+  margin-left: auto;
+  min-width: 160px;
+  width: 220px;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--cr-input-border-color, var(--cr-separator-color, rgba(0, 0, 0, 0.16)));
+  background: var(--cr-input-background-color, var(--cr-card-background-color, #fff));
+  color: var(--cr-primary-text-color, #202124);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+#${BAR_ID} .arc-boost-search::placeholder {
+  color: var(--cr-secondary-text-color, #5f6368);
+}
+
+#${BAR_ID} .arc-boost-search:focus-visible {
+  outline: none;
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--cr-focus-outline-color, var(--cr-link-color, #1a73e8));
 }
 
 extensions-item[${HIDDEN_ATTR}="true"] {
@@ -295,6 +361,20 @@ extensions-item[${HIDDEN_ATTR}="true"] {
       bar.appendChild(button);
     }
 
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'arc-boost-search';
+    search.placeholder = 'Search extensions';
+    search.setAttribute('aria-label', 'Search extensions');
+    search.value = state.query;
+    search.addEventListener('input', (event) => {
+      state.query = event.target.value || '';
+      saveSearch(state.query);
+      scheduleApply();
+    });
+    bar.appendChild(search);
+    state.searchEl = search;
+
     const count = document.createElement('span');
     count.className = 'arc-boost-count';
     bar.appendChild(count);
@@ -333,11 +413,13 @@ extensions-item[${HIDDEN_ATTR}="true"] {
 
     state.shadowRoot = list.shadowRoot;
 
+    const savedFilter = loadFilter();
+    if (savedFilter) state.filter = savedFilter;
+
+    state.query = loadSearch();
+
     ensureStyles(state.shadowRoot);
     createFilterBar(state.shadowRoot);
-
-    const saved = loadFilter();
-    if (saved) state.filter = saved;
 
     updateButtons();
     applyFilter();
