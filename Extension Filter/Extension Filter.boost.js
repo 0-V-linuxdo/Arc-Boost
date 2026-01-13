@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Arc/Chromium Extensions - Native Filter Bar
-// @namespace    arc-boost
-// @version      0.1.3
-// @description  Add native-like filter (All/Enabled/Disabled) to extensions page.
+// @name         Arc 插件页筛选（原生样式）
+// @namespace    https://github.com/0-V-linuxdo/Arc-Boost
+// @version      [20260113] v1.0.0
+// @description  Add native-like filter (All/Enabled/Disabled) to Arc extensions page.
 // @match        arc://extensions/*
 // @run-at       document-end
 // @grant        none
@@ -245,6 +245,12 @@
 
 extensions-item[${HIDDEN_ATTR}="true"] {
   display: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  #${BAR_ID} .arc-boost-button {
+    border-color: #2f7db8;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
